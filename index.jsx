@@ -148,7 +148,7 @@ export const className = `
     text-transform: uppercase;
     letter-spacing: 2px;
     text-align: center;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 1);
   }
 
   .task-list { flex: 1; }
