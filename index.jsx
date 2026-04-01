@@ -1,54 +1,77 @@
 import { React } from 'uebersicht';
 
-// 1. Initial State with 3 Columns
+// 1. Initial State - Strictly 2 Columns
 export const initialState = {
   columns: {
     todo: [],
-    // doing: [],
     done: []
   },
-  inputValue: ''
+  columnInputs: {
+    todo: '',
+    done: ''
+  },
+  dragging: null,    // { fromColumn, index }
+  dropTarget: null   // string (column key)
 };
 
-// 2. Update Logic (State Management)
+// 2. Update Logic
 export const updateState = (event, previousState) => {
-  const state = { ...initialState, ...previousState };
-  const { columns } = state;
+  const state = { ...previousState };
 
   switch (event.type) {
     case 'CHANGE_INPUT':
-      return { ...state, inputValue: event.value };
+      return {
+        ...state,
+        columnInputs: { ...state.columnInputs, [event.column]: event.value }
+      };
 
     case 'ADD_TASK':
-      if (!state.inputValue.trim()) return state;
+      const content = state.columnInputs[event.column].trim();
+      if (!content) return state;
       return {
         ...state,
         columns: {
-          ...columns,
-          todo: [...columns.todo, state.inputValue.trim()]
+          ...state.columns,
+          [event.column]: [...state.columns[event.column], content]
         },
-        inputValue: ''
+        columnInputs: { ...state.columnInputs, [event.column]: '' }
       };
+
+    case 'SET_DRAG_START':
+      return { ...state, dragging: event.data };
+
+    case 'SET_DROP_TARGET':
+      return { ...state, dropTarget: event.column };
 
     case 'MOVE_TASK':
       const { from, to, index } = event;
-      const task = columns[from][index];
-      // Remove from source
-      const newSource = columns[from].filter((_, i) => i !== index);
-      // Add to destination
-      const newDest = [...columns[to], task];
+      const task = state.columns[from][index];
       
+      const newFrom = state.columns[from].filter((_, i) => i !== index);
+      const newTo = [...state.columns[to], task];
+
       return {
         ...state,
-        columns: { ...columns, [from]: newSource, [to]: newDest }
+        columns: { ...state.columns, [from]: newFrom, [to]: newTo },
+        dragging: null,
+        dropTarget: null
       };
 
     case 'REMOVE_TASK':
       return {
         ...state,
         columns: {
-          ...columns,
-          [event.column]: columns[event.column].filter((_, i) => i !== event.index)
+          ...state.columns,
+          [event.column]: state.columns[event.column].filter((_, i) => i !== event.index)
+        }
+      };
+    
+    case 'CLEAR_COLUMN':
+      return {
+        ...state,
+        columns: {
+          ...state.columns,
+          [event.column]: []
         }
       };
 
@@ -57,144 +80,225 @@ export const updateState = (event, previousState) => {
   }
 };
 
-// 3. Styles (Horizontal Kanban Layout)
+// 3. Styles with Animations
 export const className = `
   left: 50%;
-  top: 25%;
+  top: 30%;
   transform: translate(-50%, -50%);
-  width: 900px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: rgba(255,255,255,255);
+  width: 700px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: white;
 
-  /* Global box-sizing for all widget elements */
   * { box-sizing: border-box; }
-
-  h3 { 
-    margin: 0 0 20px 0; 
-    font-size: 14px; 
-    text-transform: uppercase; 
-    opacity: 1; 
-    letter-spacing: 1.5px;
-    
-    /* Centering logic */
-    text-align: center; 
-    width: 100%; 
-  }
-
-  .input-group { 
-    display: flex; 
-    gap: 8px; 
-    margin-bottom: 20px; 
-    /* Formula: (Total Width - Total Gaps) / 2 */
-    width: calc((100% - 20px) / 2); 
-  }
-
-  input { 
-    flex: 1; 
-    background: rgba(255,255,255,0.1); 
-    border: 1px solid rgba(255,255,255,0.2); 
-    color: white; 
-    padding: 10px; 
-    border-radius: 6px; 
-    outline: none; 
-    font-size: 14px;
-  }
-
-  button.add-btn { 
-    background: rgba(0, 0, 0, 0.4); 
-    border: none; 
-    color: white; 
-    padding: 10px 15px; 
-    border-radius: 6px; 
-    cursor: pointer; 
-    font-weight: 600;
-  }
 
   .board {
     display: flex;
-    gap: 20px;
-    width: 100%;
+    gap: 25px;
   }
 
   .column {
     flex: 1;
-    background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border-radius: 12px;
-    padding: 15px;
-    min-height: 300px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(20, 20, 20, 0.4);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 16px;
+    padding: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: all 0.2s ease-in-out;
+    min-height: 350px;
+    display: flex;
+    flex-direction: column;
   }
 
-  .action-btn { 
-    background: rgba(255, 255, 255, 0.1); 
-    border: none; 
-    color: white; 
-    font-size: 10px; 
-    padding: 6px 10px; /* Slightly larger for easier clicking */
-    border-radius: 4px; 
-    cursor: pointer; /* This changes the cursor to the hand icon */
-    transition: background 0.2s, transform 0.1s;
-    display: inline-flex;
+  .column-header {
+    display: flex;
+    justify-content: space-between;
     align-items: center;
+    margin-bottom: 20px;
   }
 
-  .action-btn:hover { 
-    background: rgba(255, 255, 255, 0.25); 
-    transform: translateY(-1px); /* Subtle lift effect */
+  .clear-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 10px;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s;
   }
 
-  .delete-btn:hover { 
-    background: rgba(255, 59, 48, 0.4); /* Red tint on hover for delete */
+  .clear-btn:hover {
+    background: rgba(255, 69, 58, 0.2);
+    color: #ff453a;
+  }
+
+  /* Visual feedback when holding a card over a column */
+  .column.drag-over {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transform: scale(1.02);
+  }
+
+  h3 {
+    margin: 0 0 20px 0;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  .task-list { flex: 1; }
+
+  .card {
+    background: rgba(255, 255, 255, 0.08);
+    margin-bottom: 12px;
+    padding: 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    cursor: grab;
+    display: flex;
+    justify-content: space-between;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  }
+
+  .card:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-2px);
+  }
+
+  /* Style for the card being dragged */
+  .card.is-dragging {
+    opacity: 0.4;
+    transform: scale(0.95);
+  }
+
+  .del-btn {
+    border: none;
+    background: none;
+    color: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 0 5px;
+    transition: color 0.2s;
+  }
+
+  .del-btn:hover { color: #ff453a; }
+
+  .add-zone {
+    margin-top: 15px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 15px;
+  }
+
+  .add-input {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px;
     color: white;
+    font-size: 13px;
+    outline: none;
+    transition: border 0.2s;
   }
 
-  /* ... keep card styles from previous version ... */
+  .add-input:focus {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
 `;
 
 // 4. Component View
 export const render = (state, dispatch) => {
-  const { columns = { todo: [], done: [] }, inputValue = "" } = state || {};
+  if (!state) return null;
+  const { columns, columnInputs, dragging, dropTarget } = state;
 
-  const renderCard = (task, index, currentColumn) => (
-    <div className="card" key={`${currentColumn}-${index}`}>
-      {task}
-      <div className="card-actions">
-        {currentColumn !== 'todo' && (
-          <button className="action-btn" onClick={() => dispatch({ type: 'MOVE_TASK', from: currentColumn, to: 'todo', index })}>⇠ Todo</button>
-        )}
-        {currentColumn === 'todo' && (
-          <button className="action-btn" onClick={() => dispatch({ type: 'MOVE_TASK', from: 'todo', to: 'done', index })}>Done ⇢</button>
-        )}
-        <button className="action-btn delete-btn" onClick={() => dispatch({ type: 'REMOVE_TASK', column: currentColumn, index })}>✕</button>
-      </div>
-    </div>
-  );
+  const handleDragStart = (e, col, idx) => {
+    dispatch({ type: 'SET_DRAG_START', data: { fromColumn: col, index: idx } });
+    // Ghost image setup
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e, col) => {
+    e.preventDefault();
+    if (dropTarget !== col) {
+      dispatch({ type: 'SET_DROP_TARGET', column: col });
+    }
+  };
+
+  const handleDrop = (e, toCol) => {
+    e.preventDefault();
+    if (dragging && dragging.fromColumn !== toCol) {
+      dispatch({ 
+        type: 'MOVE_TASK', 
+        from: dragging.fromColumn, 
+        to: toCol, 
+        index: dragging.index 
+      });
+    } else {
+      dispatch({ type: 'SET_DROP_TARGET', column: null });
+    }
+  };
 
   return (
-    <div>
-      <div className="input-group">
-        <input 
-          type="text" 
-          value={inputValue} 
-          onChange={(e) => dispatch({ type: 'CHANGE_INPUT', value: e.target.value })}
-          onKeyDown={(e) => e.key === 'Enter' && dispatch({ type: 'ADD_TASK' })}
-          placeholder="Add task to 'Todo'..."
-        />
-        <button className="add-btn" onClick={() => dispatch({ type: 'ADD_TASK' })}>Add</button>
-      </div>
+    <div className="board">
+      {['todo', 'done'].map((colKey) => (
+        <div 
+          className={`column ${dropTarget === colKey ? 'drag-over' : ''}`}
+          key={colKey}
+          onDragOver={(e) => handleDragOver(e, colKey)}
+          onDragLeave={() => dispatch({ type: 'SET_DROP_TARGET', column: null })}
+          onDrop={(e) => handleDrop(e, colKey)}
+        >
+          <div className="column-header">
+            <h3>{colKey === 'todo' ? 'To Do' : 'Completed'}</h3>
+            {columns[colKey].length > 0 && (
+              <button 
+                className="clear-btn"
+                onClick={() => dispatch({ type: 'CLEAR_COLUMN', column: colKey })}
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          
+          <div className="task-list">
+            {columns[colKey].map((task, i) => {
+              const isDragging = dragging?.fromColumn === colKey && dragging?.index === i;
+              return (
+                <div 
+                  className={`card ${isDragging ? 'is-dragging' : ''}`}
+                  key={`${colKey}-${i}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, colKey, i)}
+                >
+                  <span>{task}</span>
+                  <button 
+                    className="del-btn" 
+                    onClick={() => dispatch({ type: 'REMOVE_TASK', column: colKey, index: i })}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+          </div>
 
-      <div className="board">
-        <div className="column">
-          <h3>To Do</h3>
-          {columns.todo.map((task, i) => renderCard(task, i, 'todo'))}
+          <div className="add-zone">
+            <input 
+              className="add-input"
+              placeholder="+ Add task..."
+              value={columnInputs[colKey]}
+              onChange={(e) => dispatch({ type: 'CHANGE_INPUT', column: colKey, value: e.target.value })}
+              onKeyDown={(e) => e.key === 'Enter' && dispatch({ type: 'ADD_TASK', column: colKey })}
+            />
+          </div>
         </div>
-        <div className="column">
-          <h3>Done</h3>
-          {columns.done.map((task, i) => renderCard(task, i, 'done'))}
-        </div>
-      </div>
+      ))}
     </div>
   );
 };
