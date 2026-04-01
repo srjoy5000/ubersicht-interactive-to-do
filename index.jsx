@@ -1,17 +1,24 @@
 import { React } from 'uebersicht';
 
+const STORAGE_KEY = 'uebersicht-kanban-state';
+
+// Try to load existing data
+const savedData = localStorage.getItem(STORAGE_KEY);
+const parsedData = savedData ? JSON.parse(savedData) : null;
+
 // 1. Initial State - Strictly 2 Columns
 export const initialState = {
-  columns: {
-    todo: [],
-    done: []
-  },
-  columnInputs: {
-    todo: '',
-    done: ''
-  },
-  dragging: null,    // { fromColumn, index }
-  dropTarget: null   // string (column key)
+  columns: parsedData?.columns || { todo: [], done: [] },
+  columnInputs: { todo: '', done: '' },
+  dragging: null,
+  dropTarget: null
+};
+
+// Helper to save and return
+const saveAndReturn = (newState) => {
+  // We only want to persist the 'columns', not UI states like 'dragging'
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ columns: newState.columns }));
+  return newState;
 };
 
 // 2. Update Logic
@@ -19,60 +26,52 @@ export const updateState = (event, previousState) => {
   const state = { ...previousState };
 
   switch (event.type) {
-    case 'CHANGE_INPUT':
-      return {
-        ...state,
-        columnInputs: { ...state.columnInputs, [event.column]: event.value }
-      };
-
     case 'ADD_TASK':
       const content = state.columnInputs[event.column].trim();
       if (!content) return state;
-      return {
+      return saveAndReturn({
         ...state,
         columns: {
           ...state.columns,
           [event.column]: [...state.columns[event.column], content]
         },
         columnInputs: { ...state.columnInputs, [event.column]: '' }
-      };
-
-    case 'SET_DRAG_START':
-      return { ...state, dragging: event.data };
-
-    case 'SET_DROP_TARGET':
-      return { ...state, dropTarget: event.column };
+      });
 
     case 'MOVE_TASK':
       const { from, to, index } = event;
       const task = state.columns[from][index];
-      
       const newFrom = state.columns[from].filter((_, i) => i !== index);
       const newTo = [...state.columns[to], task];
 
-      return {
+      return saveAndReturn({
         ...state,
         columns: { ...state.columns, [from]: newFrom, [to]: newTo },
         dragging: null,
         dropTarget: null
-      };
+      });
 
     case 'REMOVE_TASK':
-      return {
+      return saveAndReturn({
         ...state,
         columns: {
           ...state.columns,
           [event.column]: state.columns[event.column].filter((_, i) => i !== event.index)
         }
-      };
+      });
     
     case 'CLEAR_COLUMN':
+      return saveAndReturn({
+        ...state,
+        columns: { ...state.columns, [event.column]: [] }
+      });
+
+    // CHANGE_INPUT, SET_DRAG_START, etc. do NOT need saveAndReturn
+    // because they are temporary UI states.
+    case 'CHANGE_INPUT':
       return {
         ...state,
-        columns: {
-          ...state.columns,
-          [event.column]: []
-        }
+        columnInputs: { ...state.columnInputs, [event.column]: event.value }
       };
 
     default:
