@@ -2,43 +2,43 @@ import { React } from 'uebersicht';
 
 const STORAGE_KEY = 'uebersicht-kanban-state';
 
-// Try to load existing data
+// 1. Try to load existing data
 const savedData = localStorage.getItem(STORAGE_KEY);
 const parsedData = savedData ? JSON.parse(savedData) : null;
 
-// 1. Initial State - Strictly 2 Columns
+// 2. Initial State
 export const initialState = {
   columns: parsedData?.columns || { todo: [], done: [] },
-  columnInputs: { todo: '', done: '' },
   dragging: null,
-  dropTarget: null
+  dropTarget: null,
+  editing: null // Tracks which task is currently being edited: { column, index }
 };
 
-// Helper to save and return
+// 3. Helper to save and return
 const saveAndReturn = (newState) => {
-  // We only want to persist the 'columns', not UI states like 'dragging'
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ columns: newState.columns }));
   return newState;
 };
 
-// 2. Update Logic
+// 4. Update Logic
 export const updateState = (event, previousState) => {
   const state = { ...previousState };
 
   switch (event.type) {
-    case 'ADD_TASK':
-      const content = state.columnInputs[event.column].trim();
+    case 'ADD_TASK': {
+      const content = event.value.trim();
       if (!content) return state;
+
       return saveAndReturn({
         ...state,
         columns: {
           ...state.columns,
           [event.column]: [...state.columns[event.column], content]
-        },
-        columnInputs: { ...state.columnInputs, [event.column]: '' }
+        }
       });
+    }
 
-    case 'MOVE_TASK':
+    case 'MOVE_TASK': {
       const { from, to, index } = event;
       const task = state.columns[from][index];
       const newFrom = state.columns[from].filter((_, i) => i !== index);
@@ -50,8 +50,9 @@ export const updateState = (event, previousState) => {
         dragging: null,
         dropTarget: null
       });
+    }
 
-    case 'REMOVE_TASK':
+    case 'REMOVE_TASK': {
       return saveAndReturn({
         ...state,
         columns: {
@@ -59,32 +60,68 @@ export const updateState = (event, previousState) => {
           [event.column]: state.columns[event.column].filter((_, i) => i !== event.index)
         }
       });
-    
-    case 'CLEAR_COLUMN':
+    }
+
+    case 'CLEAR_COLUMN': {
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [event.column]: [] }
       });
+    }
 
-    // CHANGE_INPUT, SET_DRAG_START, etc. do NOT need saveAndReturn
-    // because they are temporary UI states.
-    case 'CHANGE_INPUT':
-      return {
+    // --- Edit Task Logic ---
+    case 'START_EDIT':
+      return { ...state, editing: { column: event.column, index: event.index } };
+
+    case 'CANCEL_EDIT':
+      return { ...state, editing: null };
+
+    case 'SAVE_EDIT': {
+      const content = event.value.trim();
+      // If they deleted all the text, just remove the task entirely
+      if (!content) {
+        return saveAndReturn({
+          ...state,
+          columns: {
+            ...state.columns,
+            [event.column]: state.columns[event.column].filter((_, i) => i !== event.index)
+          },
+          editing: null
+        });
+      }
+
+      // Otherwise, save the new text
+      const updatedColumn = [...state.columns[event.column]];
+      updatedColumn[event.index] = content;
+
+      return saveAndReturn({
         ...state,
-        columnInputs: { ...state.columnInputs, [event.column]: event.value }
-      };
+        columns: { ...state.columns, [event.column]: updatedColumn },
+        editing: null
+      });
+    }
+
+    // --- Temporary UI States ---
+    case 'SET_DRAG_START':
+      return { ...state, dragging: event.data };
+
+    case 'SET_DROP_TARGET':
+      return { ...state, dropTarget: event.column };
 
     default:
       return state;
   }
 };
 
-// 3. Styles with Animations
+// 5. Styles
 export const className = `
   left: 50%;
-  top: 30%;
-  transform: translate(-50%, -50%);
+  top: 60px;
+  transform: translateX(-50%);
   width: 700px;
+  max-height: calc(100vh - 120px);
+  display: flex;
+  
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: white;
 
@@ -93,6 +130,7 @@ export const className = `
   .board {
     display: flex;
     gap: 25px;
+    width: 100%;
   }
 
   .column {
@@ -105,6 +143,7 @@ export const className = `
     border: 1px solid rgba(255, 255, 255, 0.08);
     transition: all 0.2s ease-in-out;
     min-height: 350px;
+    max-height: calc(100vh - 120px);
     display: flex;
     flex-direction: column;
   }
@@ -133,7 +172,6 @@ export const className = `
     color: #ff453a;
   }
 
-  /* Visual feedback when holding a card over a column */
   .column.drag-over {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
@@ -150,7 +188,11 @@ export const className = `
     color: rgba(255, 255, 255, 1);
   }
 
-  .task-list { flex: 1; }
+  .task-list { 
+    flex: 1; 
+    overflow-y: auto; 
+    padding-right: 5px; 
+  }
 
   .card {
     background: rgba(255, 255, 255, 0.08);
@@ -161,6 +203,7 @@ export const className = `
     cursor: grab;
     display: flex;
     justify-content: space-between;
+    align-items: center;
     border: 1px solid rgba(255, 255, 255, 0.05);
     transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
   }
@@ -170,10 +213,30 @@ export const className = `
     transform: translateY(-2px);
   }
 
-  /* Style for the card being dragged */
   .card.is-dragging {
     opacity: 0.4;
     transform: scale(0.95);
+  }
+
+  .task-text {
+    flex: 1;
+    cursor: text;
+    line-height: 1.4;
+    padding-right: 10px;
+    word-break: break-word;
+  }
+
+  .edit-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: white;
+    font-size: 14px;
+    outline: none;
+    margin-right: 10px;
+    font-family: inherit;
   }
 
   .del-btn {
@@ -206,19 +269,26 @@ export const className = `
     transition: border 0.2s;
   }
 
-  .add-input:focus {
-    border-color: rgba(255, 255, 255, 0.3);
-  }
+  .add-input:focus { border-color: rgba(255, 255, 255, 0.3); }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
 `;
 
-// 4. Component View
+// 6. Component View
 export const render = (state, dispatch) => {
   if (!state) return null;
-  const { columns, columnInputs, dragging, dropTarget } = state;
+  const { columns, dragging, dropTarget, editing } = state;
 
   const handleDragStart = (e, col, idx) => {
+    // Prevent drag if we are currently editing
+    if (editing) {
+      e.preventDefault();
+      return;
+    }
     dispatch({ type: 'SET_DRAG_START', data: { fromColumn: col, index: idx } });
-    // Ghost image setup
     e.dataTransfer.effectAllowed = "move";
   };
 
@@ -232,11 +302,11 @@ export const render = (state, dispatch) => {
   const handleDrop = (e, toCol) => {
     e.preventDefault();
     if (dragging && dragging.fromColumn !== toCol) {
-      dispatch({ 
-        type: 'MOVE_TASK', 
-        from: dragging.fromColumn, 
-        to: toCol, 
-        index: dragging.index 
+      dispatch({
+        type: 'MOVE_TASK',
+        from: dragging.fromColumn,
+        to: toCol,
+        index: dragging.index
       });
     } else {
       dispatch({ type: 'SET_DROP_TARGET', column: null });
@@ -246,7 +316,7 @@ export const render = (state, dispatch) => {
   return (
     <div className="board">
       {['todo', 'done'].map((colKey) => (
-        <div 
+        <div
           className={`column ${dropTarget === colKey ? 'drag-over' : ''}`}
           key={colKey}
           onDragOver={(e) => handleDragOver(e, colKey)}
@@ -256,7 +326,7 @@ export const render = (state, dispatch) => {
           <div className="column-header">
             <h3>{colKey === 'todo' ? 'To Do' : 'Completed'}</h3>
             {columns[colKey].length > 0 && (
-              <button 
+              <button
                 className="clear-btn"
                 onClick={() => dispatch({ type: 'CLEAR_COLUMN', column: colKey })}
               >
@@ -264,36 +334,72 @@ export const render = (state, dispatch) => {
               </button>
             )}
           </div>
-          
+
           <div className="task-list">
             {columns[colKey].map((task, i) => {
               const isDragging = dragging?.fromColumn === colKey && dragging?.index === i;
+              const isEditing = editing?.column === colKey && editing?.index === i;
+
               return (
-                <div 
+                <div
                   className={`card ${isDragging ? 'is-dragging' : ''}`}
                   key={`${colKey}-${i}`}
-                  draggable
+                  draggable={!isEditing}
                   onDragStart={(e) => handleDragStart(e, colKey, i)}
                 >
-                  <span>{task}</span>
-                  <button 
-                    className="del-btn" 
-                    onClick={() => dispatch({ type: 'REMOVE_TASK', column: colKey, index: i })}
-                  >
-                    ×
-                  </button>
+                  {isEditing ? (
+                    <input 
+                      className="edit-input"
+                      defaultValue={task}
+                      autoFocus
+                      onBlur={(e) => dispatch({ type: 'SAVE_EDIT', column: colKey, index: i, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.keyCode === 229) return; // IME check
+                        if (e.key === 'Enter') {
+                          dispatch({ type: 'SAVE_EDIT', column: colKey, index: i, value: e.target.value });
+                        } else if (e.key === 'Escape') {
+                          dispatch({ type: 'CANCEL_EDIT' });
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span 
+                      className="task-text"
+                      onDoubleClick={() => dispatch({ type: 'START_EDIT', column: colKey, index: i })}
+                    >
+                      {task}
+                    </span>
+                  )}
+
+                  {!isEditing && (
+                    <button
+                      className="del-btn"
+                      onClick={() => dispatch({ type: 'REMOVE_TASK', column: colKey, index: i })}
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
 
           <div className="add-zone">
-            <input 
+            <input
               className="add-input"
               placeholder="+ Add task..."
-              value={columnInputs[colKey]}
-              onChange={(e) => dispatch({ type: 'CHANGE_INPUT', column: colKey, value: e.target.value })}
-              onKeyDown={(e) => e.key === 'Enter' && dispatch({ type: 'ADD_TASK', column: colKey })}
+              onKeyDown={(e) => {
+                if (e.keyCode === 229) return;
+                if (e.key === 'Enter') {
+                  const content = e.target.value.trim();
+                  if (content) {
+                    dispatch({ type: 'ADD_TASK', column: colKey, value: content });
+                    e.target.value = '';
+                    const inputElement = e.target;
+                    setTimeout(() => inputElement.focus(), 10);
+                  }
+                }
+              }}
             />
           </div>
         </div>
