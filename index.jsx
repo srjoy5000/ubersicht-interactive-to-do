@@ -1,140 +1,369 @@
-import { React } from 'uebersicht';
+import { React } from "uebersicht";
 
-const STORAGE_KEY = 'uebersicht-kanban-state';
+const STORAGE_KEY = "uebersicht-kanban-state";
 
-// 1. Try to load existing data
-const savedData = localStorage.getItem(STORAGE_KEY);
-const parsedData = savedData ? JSON.parse(savedData) : null;
+// Global variable fallback for strict WebKit environments
+let GLOBAL_DRAG = null;
 
-// 2. Initial State
-export const initialState = {
-  columns: parsedData?.columns || { todo: [], done: [] },
-  dragging: null,
-  dropTarget: null,
-  editing: null // Tracks which task is currently being edited: { column, index }
+// 1. Load and Migrate Initial State
+const loadInitialState = () => {
+  const savedData = localStorage.getItem(STORAGE_KEY);
+  const parsedData = savedData ? JSON.parse(savedData) : null;
+
+  const state = {
+    columns: { todo: [], doing: [], done: [], ...(parsedData?.columns || {}) },
+    limits: { todo: 5, doing: 5, done: 5 },
+    limitsEnabled: {
+      todo: false,
+      doing: false,
+      done: false,
+      ...(parsedData?.limitsEnabled || {}),
+    },
+    hiddenColumns: {
+      todo: false,
+      doing: false,
+      done: false,
+      ...(parsedData?.hiddenColumns || {}),
+    },
+    boardHidden: parsedData?.boardHidden || false,
+    dragging: null,
+    dropTarget: null,
+    dragOverItem: null,
+    editing: null,
+  };
+
+  if (parsedData?.limits) {
+    ["todo", "doing", "done"].forEach((col) => {
+      if (
+        parsedData.limits[col] !== null &&
+        parsedData.limits[col] !== undefined
+      ) {
+        state.limits[col] = parsedData.limits[col];
+        if (!parsedData.limitsEnabled) {
+          state.limitsEnabled[col] = true;
+        }
+      }
+    });
+  }
+
+  return state;
 };
 
-// 3. Helper to save and return
+export const initialState = loadInitialState();
+
+// 2. Helper to save and return
 const saveAndReturn = (newState) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ columns: newState.columns }));
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      columns: newState.columns,
+      limits: newState.limits,
+      limitsEnabled: newState.limitsEnabled,
+      hiddenColumns: newState.hiddenColumns,
+      boardHidden: newState.boardHidden,
+    }),
+  );
   return newState;
 };
 
-// 4. Update Logic
+// 3. Update Logic
 export const updateState = (event, previousState) => {
   const state = { ...previousState };
+  const currentColumnTasks = state.columns[event.column] || [];
+  const currentTaskCount = currentColumnTasks.length;
 
   switch (event.type) {
-    case 'ADD_TASK': {
+    case "TOGGLE_BOARD":
+      return saveAndReturn({ ...state, boardHidden: !state.boardHidden });
+
+    case "ADD_TASK": {
       const content = event.value.trim();
       if (!content) return state;
+
+      const isEnabled = state.limitsEnabled[event.column];
+      const limitVal = parseInt(state.limits[event.column], 10);
+
+      // Math.max(1) ensures a corrupted 0 limit doesn't permanently lock an empty column
+      if (
+        isEnabled &&
+        !isNaN(limitVal) &&
+        currentTaskCount >= Math.max(1, limitVal)
+      ) {
+        return state;
+      }
 
       return saveAndReturn({
         ...state,
         columns: {
           ...state.columns,
-          [event.column]: [...state.columns[event.column], content]
-        }
+          [event.column]: [...currentColumnTasks, content],
+        },
+        hiddenColumns: {
+          ...state.hiddenColumns,
+          [event.column]: false,
+        },
       });
     }
 
-    case 'MOVE_TASK': {
-      const { from, to, index } = event;
-      const task = state.columns[from][index];
-      const newFrom = state.columns[from].filter((_, i) => i !== index);
-      const newTo = [...state.columns[to], task];
+    case "TOGGLE_VISIBILITY": {
+      return saveAndReturn({
+        ...state,
+        hiddenColumns: {
+          ...state.hiddenColumns,
+          [event.column]: !state.hiddenColumns[event.column],
+        },
+      });
+    }
+
+    case "TOGGLE_LIMIT": {
+      const isCurrentlyEnabled = state.limitsEnabled[event.column];
+      let currentLimit = parseInt(state.limits[event.column], 10) || 5;
+
+      if (!isCurrentlyEnabled && currentLimit < currentTaskCount) {
+        currentLimit = currentTaskCount;
+      }
+
+      return saveAndReturn({
+        ...state,
+        limits: { ...state.limits, [event.column]: currentLimit },
+        limitsEnabled: {
+          ...state.limitsEnabled,
+          [event.column]: !isCurrentlyEnabled,
+        },
+      });
+    }
+
+    case "UPDATE_LIMIT": {
+      return saveAndReturn({
+        ...state,
+        limits: { ...state.limits, [event.column]: event.value },
+      });
+    }
+
+    case "ENFORCE_LIMIT_BOUNDS": {
+      let val = parseInt(state.limits[event.column], 10);
+
+      if (isNaN(val)) {
+        val = Math.max(5, currentTaskCount);
+      } else if (val < currentTaskCount) {
+        val = currentTaskCount;
+      }
+
+      return saveAndReturn({
+        ...state,
+        limits: { ...state.limits, [event.column]: val },
+      });
+    }
+
+    case "MOVE_TASK": {
+      const { from, to, fromIndex, toIndex } = event;
+
+      if (
+        !state.columns[from] ||
+        state.columns[from][fromIndex] === undefined
+      ) {
+        return {
+          ...state,
+          dragging: null,
+          dropTarget: null,
+          dragOverItem: null,
+        };
+      }
+
+      const task = state.columns[from][fromIndex];
+      const destColumnTasks = state.columns[to] || [];
+
+      const isEnabled = state.limitsEnabled[to];
+      const limitVal = parseInt(state.limits[to], 10);
+
+      // Strict limit validation
+      if (
+        isEnabled &&
+        !isNaN(limitVal) &&
+        destColumnTasks.length >= Math.max(1, limitVal)
+      ) {
+        return {
+          ...state,
+          dragging: null,
+          dropTarget: null,
+          dragOverItem: null,
+        };
+      }
+
+      const newFrom = state.columns[from].filter((_, i) => i !== fromIndex);
+      const newTo = [...destColumnTasks];
+
+      if (toIndex !== undefined && toIndex !== null) {
+        newTo.splice(toIndex, 0, task);
+      } else {
+        newTo.push(task);
+      }
 
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [from]: newFrom, [to]: newTo },
         dragging: null,
-        dropTarget: null
+        dropTarget: null,
+        dragOverItem: null,
       });
     }
 
-    case 'REMOVE_TASK': {
+    case "REORDER_TASK": {
+      const { column, fromIndex, toIndex } = event;
+
+      if (
+        !state.columns[column] ||
+        state.columns[column][fromIndex] === undefined
+      ) {
+        return {
+          ...state,
+          dragging: null,
+          dropTarget: null,
+          dragOverItem: null,
+        };
+      }
+
+      const tasks = [...currentColumnTasks];
+      const [task] = tasks.splice(fromIndex, 1);
+
+      const insertIndex = toIndex > fromIndex ? toIndex - 1 : toIndex;
+      tasks.splice(insertIndex, 0, task);
+
+      return saveAndReturn({
+        ...state,
+        columns: { ...state.columns, [column]: tasks },
+        dragging: null,
+        dropTarget: null,
+        dragOverItem: null,
+      });
+    }
+
+    case "REMOVE_TASK": {
       return saveAndReturn({
         ...state,
         columns: {
           ...state.columns,
-          [event.column]: state.columns[event.column].filter((_, i) => i !== event.index)
-        }
+          [event.column]: currentColumnTasks.filter(
+            (_, i) => i !== event.index,
+          ),
+        },
       });
     }
 
-    case 'CLEAR_COLUMN': {
+    case "CLEAR_COLUMN": {
       return saveAndReturn({
         ...state,
-        columns: { ...state.columns, [event.column]: [] }
+        columns: { ...state.columns, [event.column]: [] },
       });
     }
 
-    // --- Edit Task Logic ---
-    case 'START_EDIT':
-      return { ...state, editing: { column: event.column, index: event.index } };
+    case "START_EDIT":
+      return {
+        ...state,
+        editing: { column: event.column, index: event.index },
+      };
 
-    case 'CANCEL_EDIT':
+    case "CANCEL_EDIT":
       return { ...state, editing: null };
 
-    case 'SAVE_EDIT': {
+    case "SAVE_EDIT": {
       const content = event.value.trim();
-      // If they deleted all the text, just remove the task entirely
       if (!content) {
         return saveAndReturn({
           ...state,
           columns: {
             ...state.columns,
-            [event.column]: state.columns[event.column].filter((_, i) => i !== event.index)
+            [event.column]: currentColumnTasks.filter(
+              (_, i) => i !== event.index,
+            ),
           },
-          editing: null
+          editing: null,
         });
       }
 
-      // Otherwise, save the new text
-      const updatedColumn = [...state.columns[event.column]];
+      const updatedColumn = [...currentColumnTasks];
       updatedColumn[event.index] = content;
 
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [event.column]: updatedColumn },
-        editing: null
+        editing: null,
       });
     }
 
-    // --- Temporary UI States ---
-    case 'SET_DRAG_START':
+    case "SET_DRAG_START":
       return { ...state, dragging: event.data };
 
-    case 'SET_DROP_TARGET':
+    case "SET_DROP_TARGET":
       return { ...state, dropTarget: event.column };
+
+    case "SET_DRAG_OVER_ITEM":
+      return { ...state, dragOverItem: event.data };
+
+    case "CLEAR_DRAG_STATE":
+      return { ...state, dragging: null, dropTarget: null, dragOverItem: null };
 
     default:
       return state;
   }
 };
 
-// 5. Styles
+// 4. Styles
 export const className = `
   left: 50%;
   top: 60px;
   transform: translateX(-50%);
-  width: 700px;
+  width: 1050px; 
+  max-width: 95vw;
   max-height: calc(100vh - 120px);
   display: flex;
+  flex-direction: column; 
+  align-items: center;
   
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: white;
 
   * { box-sizing: border-box; }
 
+  .global-toggle-btn {
+    background: rgba(20, 20, 20, 0.5);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: white;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    transition: all 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  }
+
+  .global-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .board-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
   .board {
     display: flex;
-    gap: 25px;
+    gap: 20px;
     width: 100%;
   }
 
   .column {
-    flex: 1;
+    flex: 1 1 0; 
+    min-width: 0;
     background: rgba(20, 20, 20, 0.4);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
@@ -142,56 +371,180 @@ export const className = `
     padding: 20px;
     border: 1px solid rgba(255, 255, 255, 0.08);
     transition: all 0.2s ease-in-out;
-    min-height: 350px;
-    max-height: calc(100vh - 120px);
+    min-height: 200px;
+    max-height: calc(100vh - 160px);
     display: flex;
     flex-direction: column;
   }
 
   .column-header {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 15px;
   }
 
-  .clear-btn {
+  .header-top {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    min-height: 24px;
+  }
+
+  .header-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    padding-top: 10px;
+  }
+
+  .header-title-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .limit-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .count-badge {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+  }
+
+  .limit-input-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    visibility: visible;
+  }
+
+  .limit-input-container.hidden {
+    visibility: hidden;
+  }
+
+  .limit-label {
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    font-weight: 700;
+  }
+
+  .limit-toggle-btn {
+    width: 75px; 
+    text-align: center;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0);
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 10px;
+    padding: 4px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .limit-toggle-btn.on {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+  }
+
+  .limit-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .limit-toggle-btn.on:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  .limit-input-inline {
+    width: 45px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 3px 4px;
+    color: white; 
+    font-size: 11px;
+    outline: none;
+    text-align: center;
+    font-family: inherit;
+    font-weight: bold;
+  }
+
+  .action-btn {
     background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.3);
+    color: rgba(255, 255, 255, 0.4);
     font-size: 10px;
     text-transform: uppercase;
     cursor: pointer;
     padding: 4px 8px;
     border-radius: 4px;
     transition: all 0.2s;
+    white-space: nowrap;
   }
 
-  .clear-btn:hover {
+  .action-btn.fixed-width {
+    width: 50px; 
+    text-align: center;
+    padding: 4px 0;
+  }
+
+  .action-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+  }
+
+  .action-btn.danger:hover {
     background: rgba(255, 69, 58, 0.2);
     color: #ff453a;
   }
 
   .column.drag-over {
     background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    transform: scale(1.02);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
   }
 
   h3 {
-    margin: 0 0 20px 0;
+    margin: 0;
     font-size: 11px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 2px;
-    text-align: center;
     color: rgba(255, 255, 255, 1);
+    white-space: nowrap;
+    cursor: default;
+
+    /* Permanent Grow and Glow Effect */
+    transform: scale(1.15);
+    transform-origin: left center;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
   }
 
   .task-list { 
     flex: 1; 
     overflow-y: auto; 
     padding-right: 5px; 
+    padding-top: 5px; 
+    min-height: 50px; /* Guarantees dropping space even if empty */
   }
 
   .card {
@@ -205,17 +558,29 @@ export const className = `
     justify-content: space-between;
     align-items: center;
     border: 1px solid rgba(255, 255, 255, 0.05);
-    transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+    transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+    position: relative;
   }
 
   .card:hover {
     background: rgba(255, 255, 255, 0.12);
-    transform: translateY(-2px);
   }
 
   .card.is-dragging {
-    opacity: 0.4;
-    transform: scale(0.95);
+    opacity: 0.3;
+  }
+
+  .card.drag-over-indicator::before {
+    content: '';
+    position: absolute;
+    top: -7px; 
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #ffffff;
+    border-radius: 2px;
+    z-index: 10;
+    pointer-events: none; /* Prevents line from capturing drops */
   }
 
   .task-text {
@@ -252,7 +617,7 @@ export const className = `
   .del-btn:hover { color: #ff453a; }
 
   .add-zone {
-    margin-top: 15px;
+    margin-top: auto; 
     border-top: 1px solid rgba(255,255,255,0.1);
     padding-top: 15px;
   }
@@ -274,136 +639,357 @@ export const className = `
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); } /* Fixed: hover is the same as default */
 `;
 
-// 6. Component View
+// 5. Component View
 export const render = (state, dispatch) => {
   if (!state) return null;
-  const { columns, dragging, dropTarget, editing } = state;
+  const {
+    columns,
+    limits,
+    limitsEnabled,
+    hiddenColumns,
+    boardHidden,
+    dragging,
+    dropTarget,
+    dragOverItem,
+    editing,
+  } = state;
 
   const handleDragStart = (e, col, idx) => {
-    // Prevent drag if we are currently editing
     if (editing) {
       e.preventDefault();
       return;
     }
-    dispatch({ type: 'SET_DRAG_START', data: { fromColumn: col, index: idx } });
+
     e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", `${col}:${idx}`);
+
+    GLOBAL_DRAG = { fromCol: col, fromIndex: idx };
+    dispatch({ type: "SET_DRAG_START", data: { fromColumn: col, index: idx } });
   };
 
-  const handleDragOver = (e, col) => {
+  const handleDragOverColumn = (e, colKey, isFull, isSameCol) => {
     e.preventDefault();
-    if (dropTarget !== col) {
-      dispatch({ type: 'SET_DROP_TARGET', column: col });
+
+    if (isFull && !isSameCol) {
+      e.dataTransfer.dropEffect = "none";
+      return;
+    }
+
+    e.dataTransfer.dropEffect = "move";
+
+    if (hiddenColumns[colKey]) return;
+
+    if (dropTarget !== colKey) {
+      dispatch({ type: "SET_DROP_TARGET", column: colKey });
+    }
+
+    if (
+      e.target.classList.contains("column") ||
+      e.target.classList.contains("task-list")
+    ) {
+      if (dragOverItem !== null) {
+        dispatch({ type: "SET_DRAG_OVER_ITEM", data: null });
+      }
     }
   };
 
   const handleDrop = (e, toCol) => {
     e.preventDefault();
-    if (dragging && dragging.fromColumn !== toCol) {
-      dispatch({
-        type: 'MOVE_TASK',
-        from: dragging.fromColumn,
-        to: toCol,
-        index: dragging.index
-      });
-    } else {
-      dispatch({ type: 'SET_DROP_TARGET', column: null });
+    e.stopPropagation();
+
+    if (hiddenColumns[toCol]) return;
+
+    const fromCol = GLOBAL_DRAG?.fromCol ?? dragging?.fromColumn;
+    const fromIndex = GLOBAL_DRAG?.fromIndex ?? dragging?.index;
+
+    if (fromCol === undefined || fromIndex === undefined) {
+      GLOBAL_DRAG = null;
+      dispatch({ type: "CLEAR_DRAG_STATE" });
+      return;
     }
+
+    const dropIndex =
+      dragOverItem?.column === toCol ? dragOverItem.index : undefined;
+
+    if (fromCol === toCol) {
+      if (dropIndex !== undefined && dropIndex !== fromIndex) {
+        dispatch({
+          type: "REORDER_TASK",
+          column: toCol,
+          fromIndex: fromIndex,
+          toIndex: dropIndex,
+        });
+      }
+    } else {
+      dispatch({
+        type: "MOVE_TASK",
+        from: fromCol,
+        to: toCol,
+        fromIndex: fromIndex,
+        toIndex: dropIndex,
+      });
+    }
+
+    GLOBAL_DRAG = null;
+    dispatch({ type: "CLEAR_DRAG_STATE" });
   };
 
   return (
-    <div className="board">
-      {['todo', 'done'].map((colKey) => (
-        <div
-          className={`column ${dropTarget === colKey ? 'drag-over' : ''}`}
-          key={colKey}
-          onDragOver={(e) => handleDragOver(e, colKey)}
-          onDragLeave={() => dispatch({ type: 'SET_DROP_TARGET', column: null })}
-          onDrop={(e) => handleDrop(e, colKey)}
-        >
-          <div className="column-header">
-            <h3>{colKey === 'todo' ? 'To Do' : 'Completed'}</h3>
-            {columns[colKey].length > 0 && (
-              <button
-                className="clear-btn"
-                onClick={() => dispatch({ type: 'CLEAR_COLUMN', column: colKey })}
-              >
-                Clear All
-              </button>
-            )}
-          </div>
+    <>
+      <button
+        className="global-toggle-btn"
+        onClick={() => dispatch({ type: "TOGGLE_BOARD" })}
+      >
+        {boardHidden ? "Show Kanban Board" : "Hide Kanban Board"}
+      </button>
 
-          <div className="task-list">
-            {columns[colKey].map((task, i) => {
-              const isDragging = dragging?.fromColumn === colKey && dragging?.index === i;
-              const isEditing = editing?.column === colKey && editing?.index === i;
+      {!boardHidden && (
+        <div className="board-container">
+          <div className="board">
+            {["todo", "doing", "done"].map((colKey) => {
+              const currentTaskCount = (columns[colKey] || []).length;
+              const isEnabled = limitsEnabled[colKey];
+              const limitVal = parseInt(limits[colKey], 10);
+
+              const isFull =
+                isEnabled &&
+                !isNaN(limitVal) &&
+                currentTaskCount >= Math.max(1, limitVal);
+              const isDraggingFromHere =
+                (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) === colKey;
 
               return (
                 <div
-                  className={`card ${isDragging ? 'is-dragging' : ''}`}
-                  key={`${colKey}-${i}`}
-                  draggable={!isEditing}
-                  onDragStart={(e) => handleDragStart(e, colKey, i)}
+                  className={`column ${dropTarget === colKey && !hiddenColumns[colKey] ? "drag-over" : ""}`}
+                  key={colKey}
+                  onDragOver={(e) =>
+                    handleDragOverColumn(e, colKey, isFull, isDraggingFromHere)
+                  }
+                  onDragEnter={(e) => e.preventDefault()}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                      dispatch({ type: "SET_DROP_TARGET", column: null });
+                    }
+                  }}
+                  onDrop={(e) => handleDrop(e, colKey)}
                 >
-                  {isEditing ? (
-                    <input 
-                      className="edit-input"
-                      defaultValue={task}
-                      autoFocus
-                      onBlur={(e) => dispatch({ type: 'SAVE_EDIT', column: colKey, index: i, value: e.target.value })}
+                  <div className="column-header">
+                    <div className="header-top">
+                      <div className="header-title-group">
+                        <h3>
+                          {colKey === "todo"
+                            ? "To Do"
+                            : colKey === "doing"
+                              ? "Doing"
+                              : "Completed"}
+                        </h3>
+
+                        <div
+                          className={`limit-input-container ${!isEnabled ? "hidden" : ""}`}
+                        >
+                          <span className="limit-label">MAX</span>
+                          <input
+                            className="limit-input-inline"
+                            type="number"
+                            min={currentTaskCount}
+                            value={limits[colKey]}
+                            onChange={(e) =>
+                              dispatch({
+                                type: "UPDATE_LIMIT",
+                                column: colKey,
+                                value: e.target.value,
+                              })
+                            }
+                            onBlur={() =>
+                              dispatch({
+                                type: "ENFORCE_LIMIT_BOUNDS",
+                                column: colKey,
+                              })
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.target.blur();
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="header-bottom">
+                      <div className="limit-group">
+                        <span className="count-badge">
+                          Count: {currentTaskCount}
+                        </span>
+                        <button
+                          className={`limit-toggle-btn ${isEnabled ? "on" : "off"}`}
+                          onClick={() =>
+                            dispatch({ type: "TOGGLE_LIMIT", column: colKey })
+                          }
+                        >
+                          {isEnabled ? "Limit: ON" : "Limit: OFF"}
+                        </button>
+                      </div>
+
+                      <div className="header-actions">
+                        <button
+                          className="action-btn fixed-width"
+                          onClick={() =>
+                            dispatch({
+                              type: "TOGGLE_VISIBILITY",
+                              column: colKey,
+                            })
+                          }
+                        >
+                          {hiddenColumns[colKey] ? "Show" : "Hide"}
+                        </button>
+                        {currentTaskCount > 0 && (
+                          <button
+                            className="action-btn danger"
+                            onClick={() =>
+                              dispatch({ type: "CLEAR_COLUMN", column: colKey })
+                            }
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!hiddenColumns[colKey] && (
+                    <div className="task-list">
+                      {(columns[colKey] || []).map((task, i) => {
+                        const isDraggingMe =
+                          (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) ===
+                            colKey &&
+                          (GLOBAL_DRAG?.fromIndex || dragging?.index) === i;
+                        const isBeingHoveredOver =
+                          dragOverItem?.column === colKey &&
+                          dragOverItem?.index === i;
+                        const isEditing =
+                          editing?.column === colKey && editing?.index === i;
+
+                        return (
+                          <div
+                            className={`card ${isDraggingMe ? "is-dragging" : ""} ${isBeingHoveredOver && !isDraggingMe ? "drag-over-indicator" : ""}`}
+                            key={`${colKey}-${i}`}
+                            draggable={!isEditing}
+                            onDragStart={(e) => handleDragStart(e, colKey, i)}
+                            onDragEnd={() => {
+                              GLOBAL_DRAG = null;
+                              dispatch({ type: "CLEAR_DRAG_STATE" });
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                            }}
+                            onDragEnter={(e) => {
+                              e.preventDefault();
+                              if (
+                                dragOverItem?.column !== colKey ||
+                                dragOverItem?.index !== i
+                              ) {
+                                dispatch({
+                                  type: "SET_DRAG_OVER_ITEM",
+                                  data: { column: colKey, index: i },
+                                });
+                              }
+                            }}
+                          >
+                            {isEditing ? (
+                              <input
+                                className="edit-input"
+                                defaultValue={task}
+                                autoFocus
+                                onBlur={(e) =>
+                                  dispatch({
+                                    type: "SAVE_EDIT",
+                                    column: colKey,
+                                    index: i,
+                                    value: e.target.value,
+                                  })
+                                }
+                                onKeyDown={(e) => {
+                                  if (e.keyCode === 229) return;
+                                  if (e.key === "Enter") {
+                                    dispatch({
+                                      type: "SAVE_EDIT",
+                                      column: colKey,
+                                      index: i,
+                                      value: e.target.value,
+                                    });
+                                  } else if (e.key === "Escape") {
+                                    dispatch({ type: "CANCEL_EDIT" });
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span
+                                className="task-text"
+                                onDoubleClick={() =>
+                                  dispatch({
+                                    type: "START_EDIT",
+                                    column: colKey,
+                                    index: i,
+                                  })
+                                }
+                              >
+                                {task}
+                              </span>
+                            )}
+
+                            {!isEditing && (
+                              <button
+                                className="del-btn"
+                                onClick={() =>
+                                  dispatch({
+                                    type: "REMOVE_TASK",
+                                    column: colKey,
+                                    index: i,
+                                  })
+                                }
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="add-zone">
+                    <input
+                      className="add-input"
+                      placeholder="+ Add task..."
                       onKeyDown={(e) => {
-                        if (e.keyCode === 229) return; // IME check
-                        if (e.key === 'Enter') {
-                          dispatch({ type: 'SAVE_EDIT', column: colKey, index: i, value: e.target.value });
-                        } else if (e.key === 'Escape') {
-                          dispatch({ type: 'CANCEL_EDIT' });
+                        if (e.keyCode === 229) return;
+                        if (e.key === "Enter") {
+                          const content = e.target.value.trim();
+                          if (content) {
+                            dispatch({
+                              type: "ADD_TASK",
+                              column: colKey,
+                              value: content,
+                            });
+                            e.target.value = "";
+                            const inputElement = e.target;
+                            setTimeout(() => inputElement.focus(), 10);
+                          }
                         }
                       }}
                     />
-                  ) : (
-                    <span 
-                      className="task-text"
-                      onDoubleClick={() => dispatch({ type: 'START_EDIT', column: colKey, index: i })}
-                    >
-                      {task}
-                    </span>
-                  )}
-
-                  {!isEditing && (
-                    <button
-                      className="del-btn"
-                      onClick={() => dispatch({ type: 'REMOVE_TASK', column: colKey, index: i })}
-                    >
-                      ×
-                    </button>
-                  )}
+                  </div>
                 </div>
               );
             })}
           </div>
-
-          <div className="add-zone">
-            <input
-              className="add-input"
-              placeholder="+ Add task..."
-              onKeyDown={(e) => {
-                if (e.keyCode === 229) return;
-                if (e.key === 'Enter') {
-                  const content = e.target.value.trim();
-                  if (content) {
-                    dispatch({ type: 'ADD_TASK', column: colKey, value: content });
-                    e.target.value = '';
-                    const inputElement = e.target;
-                    setTimeout(() => inputElement.focus(), 10);
-                  }
-                }
-              }}
-            />
-          </div>
         </div>
-      ))}
-    </div>
+      )}
+    </>
   );
 };
