@@ -1,8 +1,6 @@
 import { React } from "uebersicht";
 
 const STORAGE_KEY = "uebersicht-kanban-state";
-
-// Global variable fallback for strict WebKit environments
 let GLOBAL_DRAG = null;
 
 // 1. Load and Migrate Initial State
@@ -66,7 +64,7 @@ const saveAndReturn = (newState) => {
   return newState;
 };
 
-// 3. Update Logic
+// 3. Update Logic (Reducer)
 export const updateState = (event, previousState) => {
   const state = { ...previousState };
   const currentColumnTasks = state.columns[event.column] || [];
@@ -83,7 +81,6 @@ export const updateState = (event, previousState) => {
       const isEnabled = state.limitsEnabled[event.column];
       const limitVal = parseInt(state.limits[event.column], 10);
 
-      // Math.max(1) ensures a corrupted 0 limit doesn't permanently lock an empty column
       if (
         isEnabled &&
         !isNaN(limitVal) &&
@@ -98,14 +95,11 @@ export const updateState = (event, previousState) => {
           ...state.columns,
           [event.column]: [...currentColumnTasks, content],
         },
-        hiddenColumns: {
-          ...state.hiddenColumns,
-          [event.column]: false,
-        },
+        hiddenColumns: { ...state.hiddenColumns, [event.column]: false },
       });
     }
 
-    case "TOGGLE_VISIBILITY": {
+    case "TOGGLE_VISIBILITY":
       return saveAndReturn({
         ...state,
         hiddenColumns: {
@@ -113,7 +107,6 @@ export const updateState = (event, previousState) => {
           [event.column]: !state.hiddenColumns[event.column],
         },
       });
-    }
 
     case "TOGGLE_LIMIT": {
       const isCurrentlyEnabled = state.limitsEnabled[event.column];
@@ -133,21 +126,16 @@ export const updateState = (event, previousState) => {
       });
     }
 
-    case "UPDATE_LIMIT": {
+    case "UPDATE_LIMIT":
       return saveAndReturn({
         ...state,
         limits: { ...state.limits, [event.column]: event.value },
       });
-    }
 
     case "ENFORCE_LIMIT_BOUNDS": {
       let val = parseInt(state.limits[event.column], 10);
-
-      if (isNaN(val)) {
-        val = Math.max(5, currentTaskCount);
-      } else if (val < currentTaskCount) {
-        val = currentTaskCount;
-      }
+      if (isNaN(val)) val = Math.max(5, currentTaskCount);
+      else if (val < currentTaskCount) val = currentTaskCount;
 
       return saveAndReturn({
         ...state,
@@ -172,11 +160,9 @@ export const updateState = (event, previousState) => {
 
       const task = state.columns[from][fromIndex];
       const destColumnTasks = state.columns[to] || [];
-
       const isEnabled = state.limitsEnabled[to];
       const limitVal = parseInt(state.limits[to], 10);
 
-      // Strict limit validation
       if (
         isEnabled &&
         !isNaN(limitVal) &&
@@ -193,11 +179,9 @@ export const updateState = (event, previousState) => {
       const newFrom = state.columns[from].filter((_, i) => i !== fromIndex);
       const newTo = [...destColumnTasks];
 
-      if (toIndex !== undefined && toIndex !== null) {
+      if (toIndex !== undefined && toIndex !== null)
         newTo.splice(toIndex, 0, task);
-      } else {
-        newTo.push(task);
-      }
+      else newTo.push(task);
 
       return saveAndReturn({
         ...state,
@@ -225,7 +209,6 @@ export const updateState = (event, previousState) => {
 
       const tasks = [...currentColumnTasks];
       const [task] = tasks.splice(fromIndex, 1);
-
       const insertIndex = toIndex > fromIndex ? toIndex - 1 : toIndex;
       tasks.splice(insertIndex, 0, task);
 
@@ -238,7 +221,7 @@ export const updateState = (event, previousState) => {
       });
     }
 
-    case "REMOVE_TASK": {
+    case "REMOVE_TASK":
       return saveAndReturn({
         ...state,
         columns: {
@@ -248,14 +231,12 @@ export const updateState = (event, previousState) => {
           ),
         },
       });
-    }
 
-    case "CLEAR_COLUMN": {
+    case "CLEAR_COLUMN":
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [event.column]: [] },
       });
-    }
 
     case "START_EDIT":
       return {
@@ -283,7 +264,6 @@ export const updateState = (event, previousState) => {
 
       const updatedColumn = [...currentColumnTasks];
       updatedColumn[event.index] = content;
-
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [event.column]: updatedColumn },
@@ -293,16 +273,12 @@ export const updateState = (event, previousState) => {
 
     case "SET_DRAG_START":
       return { ...state, dragging: event.data };
-
     case "SET_DROP_TARGET":
       return { ...state, dropTarget: event.column };
-
     case "SET_DRAG_OVER_ITEM":
       return { ...state, dragOverItem: event.data };
-
     case "CLEAR_DRAG_STATE":
       return { ...state, dragging: null, dropTarget: null, dragOverItem: null };
-
     default:
       return state;
   }
@@ -319,7 +295,6 @@ export const className = `
   display: flex;
   flex-direction: column; 
   align-items: center;
-  
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   color: white;
 
@@ -342,24 +317,13 @@ export const className = `
     transition: all 0.2s ease;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   }
-
   .global-toggle-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     transform: translateY(-2px);
     border-color: rgba(255, 255, 255, 0.3);
   }
-
-  .board-container {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-  }
-
-  .board {
-    display: flex;
-    gap: 20px;
-    width: 100%;
-  }
+  .board-container { width: 100%; display: flex; justify-content: center; }
+  .board { display: flex; gap: 20px; width: 100%; }
 
   .column {
     flex: 1 1 0; 
@@ -376,47 +340,19 @@ export const className = `
     display: flex;
     flex-direction: column;
   }
-
-  .column-header {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    margin-bottom: 15px;
+  .column.drag-over {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
   }
 
-  .header-top {
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    min-height: 24px;
-  }
-
-  .header-bottom {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-top: 1px solid rgba(255,255,255,0.05);
-    padding-top: 10px;
-  }
-
-  .header-title-group {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .header-actions {
-    display: flex;
-    gap: 5px;
-    flex-shrink: 0;
-  }
-
-  .limit-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
+  .column-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 15px; }
+  .header-top { display: flex; justify-content: space-between; align-items: center; min-height: 24px; }
+  .header-bottom { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 10px; gap: 10px; }
+  .header-title-group { display: flex; align-items: center; gap: 12px; }
+  .header-actions { display: flex; gap: 5px; flex-shrink: 0; }
+  .limit-group { display: flex; align-items: center; gap: 6px; }
+  
   .count-badge {
     background: rgba(255, 255, 255, 0.1);
     padding: 4px 8px;
@@ -427,299 +363,288 @@ export const className = `
     white-space: nowrap;
   }
 
-  .limit-input-container {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    visibility: visible;
-  }
-
-  .limit-input-container.hidden {
-    visibility: hidden;
-  }
-
-  .limit-label {
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.4);
-    font-weight: 700;
-  }
+  .limit-input-container { display: flex; align-items: center; gap: 6px; visibility: visible; }
+  .limit-input-container.hidden { visibility: hidden; }
+  .limit-label { font-size: 10px; color: rgba(255, 255, 255, 0.4); font-weight: 700; }
 
   .limit-toggle-btn {
-    width: 75px; 
-    text-align: center;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0);
-    color: rgba(255, 255, 255, 0.5);
-    font-size: 10px;
-    padding: 4px 0;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-weight: bold;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
+    width: 75px; text-align: center; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0);
+    color: rgba(255, 255, 255, 0.5); font-size: 10px; padding: 4px 0; border-radius: 4px;
+    cursor: pointer; transition: all 0.2s; font-weight: bold; letter-spacing: 0.5px; white-space: nowrap;
   }
-
-  .limit-toggle-btn.on {
-    background: rgba(255, 255, 255, 0.15);
-    color: white;
-  }
-
-  .limit-toggle-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-  }
-
-  .limit-toggle-btn.on:hover {
-    background: rgba(255, 255, 255, 0.25);
-  }
-
+  .limit-toggle-btn:hover { background: rgba(48, 209, 88, 0.25); color: #30d158; }
+  .limit-toggle-btn.on:hover { background: rgba(48, 209, 88, 0.25); }
+  
   .limit-input-inline {
-    width: 45px;
-    background: rgba(0, 0, 0, 0.3);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    border-radius: 4px;
-    padding: 3px 4px;
-    color: white; 
-    font-size: 11px;
-    outline: none;
-    text-align: center;
-    font-family: inherit;
-    font-weight: bold;
+    width: 45px; background: rgba(0, 0, 0, 0.3); border-radius: 4px; padding: 3px 4px;
+    color: rgba(255, 255, 255, 0.5); font-size: 11px; outline: none; text-align: center;
+    font-family: inherit; font-weight: bold;
   }
 
   .action-btn {
-    background: none;
-    border: none;
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 10px;
-    text-transform: uppercase;
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: all 0.2s;
-    white-space: nowrap;
+    background: none; border: none; color: rgba(255, 255, 255, 0.4); font-size: 10px;
+    text-transform: uppercase; cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    transition: all 0.2s; white-space: nowrap;
   }
-
-  .action-btn.fixed-width {
-    width: 50px; 
-    text-align: center;
-    padding: 4px 0;
-  }
-
-  .action-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-  }
-
-  .action-btn.danger:hover {
-    background: rgba(255, 69, 58, 0.2);
-    color: #ff453a;
-  }
-
-  .column.drag-over {
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
-  }
+  .action-btn.fixed-width { width: 50px; text-align: center; padding: 4px 0; }
+  .action-btn:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+  .action-btn.danger:hover { background: rgba(255, 69, 58, 0.2); color: #ff453a; }
 
   h3 {
-    margin: 0;
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: rgba(255, 255, 255, 1);
-    white-space: nowrap;
-    cursor: default;
-
-    /* Permanent Grow and Glow Effect */
-    transform: scale(1.15);
-    transform-origin: left center;
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+    margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 2px; color: rgba(255, 255, 255, 1); white-space: nowrap; cursor: default;
+    transform: scale(1.15); transform-origin: left center; text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
   }
 
-  .task-list { 
-    flex: 1; 
-    overflow-y: auto; 
-    padding-right: 5px; 
-    padding-top: 5px; 
-    min-height: 50px; /* Guarantees dropping space even if empty */
-  }
-
+  .task-list { flex: 1; overflow-y: auto; padding-right: 5px; padding-top: 5px; min-height: 50px; }
+  
   .card {
-    background: rgba(255, 255, 255, 0.08);
-    margin-bottom: 12px;
-    padding: 14px;
-    border-radius: 10px;
-    font-size: 14px;
-    cursor: grab;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+    background: rgba(255, 255, 255, 0.08); margin-bottom: 12px; padding: 14px; border-radius: 10px;
+    font-size: 14px; cursor: grab; display: flex; justify-content: space-between; align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.05); transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
     position: relative;
   }
-
-  .card:hover {
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .card.is-dragging {
-    opacity: 0.3;
-  }
-
+  .card:hover { background: rgba(255, 255, 255, 0.12); }
+  .card.is-dragging { opacity: 0.3; }
   .card.drag-over-indicator::before {
-    content: '';
-    position: absolute;
-    top: -7px; 
-    left: 0;
-    right: 0;
-    height: 2px;
-    background-color: #ffffff;
-    border-radius: 2px;
-    z-index: 10;
-    pointer-events: none; /* Prevents line from capturing drops */
+    content: ''; position: absolute; top: -7px; left: 0; right: 0; height: 2px;
+    background-color: #ffffff; border-radius: 2px; z-index: 10; pointer-events: none; 
   }
 
-  .task-text {
-    flex: 1;
-    cursor: text;
-    line-height: 1.4;
-    padding-right: 10px;
-    word-break: break-word;
-  }
-
+  .task-text { flex: 1; cursor: text; line-height: 1.4; padding-right: 10px; word-break: break-word; }
   .edit-input {
-    flex: 1;
-    background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 6px;
-    padding: 6px 10px;
-    color: white;
-    font-size: 14px;
-    outline: none;
-    margin-right: 10px;
-    font-family: inherit;
+    flex: 1; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 6px; padding: 6px 10px; color: white; font-size: 14px; outline: none;
+    margin-right: 10px; font-family: inherit;
   }
 
-  .del-btn {
-    border: none;
-    background: none;
-    color: rgba(255, 255, 255, 0.3);
-    cursor: pointer;
-    font-size: 16px;
-    padding: 0 5px;
-    transition: color 0.2s;
-  }
-
+  .del-btn { border: none; background: none; color: rgba(255, 255, 255, 0.3); cursor: pointer; font-size: 16px; padding: 0 5px; transition: color 0.2s; }
   .del-btn:hover { color: #ff453a; }
 
-  .add-zone {
-    margin-top: auto; 
-    border-top: 1px solid rgba(255,255,255,0.1);
-    padding-top: 15px;
-  }
-
+  .add-zone { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
   .add-input {
-    width: 100%;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    padding: 10px;
-    color: white;
-    font-size: 13px;
-    outline: none;
-    transition: border 0.2s;
+    width: 100%; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px; padding: 10px; color: white; font-size: 13px; outline: none; transition: border 0.2s;
   }
-
   .add-input:focus { border-color: rgba(255, 255, 255, 0.3); }
 
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
-  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); } /* Fixed: hover is the same as default */
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); } 
 `;
 
-// 5. Component View
-export const render = (state, dispatch) => {
-  if (!state) return null;
+// 5. UI Components
+
+const Card = ({ task, index, colKey, state, dispatch }) => {
+  const { dragging, dragOverItem, editing } = state;
+  const isDraggingMe =
+    (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) === colKey &&
+    (GLOBAL_DRAG?.fromIndex || dragging?.index) === index;
+  const isBeingHoveredOver =
+    dragOverItem?.column === colKey && dragOverItem?.index === index;
+  const isEditing = editing?.column === colKey && editing?.index === index;
+
+  return (
+    <div
+      className={`card ${isDraggingMe ? "is-dragging" : ""} ${isBeingHoveredOver && !isDraggingMe ? "drag-over-indicator" : ""}`}
+      draggable={!isEditing}
+      onDragStart={(e) => {
+        if (isEditing) return e.preventDefault();
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", `${colKey}:${index}`);
+        GLOBAL_DRAG = { fromCol: colKey, fromIndex: index };
+        dispatch({
+          type: "SET_DRAG_START",
+          data: { fromColumn: colKey, index },
+        });
+      }}
+      onDragEnd={() => {
+        GLOBAL_DRAG = null;
+        dispatch({ type: "CLEAR_DRAG_STATE" });
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+      }}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        if (dragOverItem?.column !== colKey || dragOverItem?.index !== index) {
+          dispatch({
+            type: "SET_DRAG_OVER_ITEM",
+            data: { column: colKey, index },
+          });
+        }
+      }}
+    >
+      {isEditing ? (
+        <input
+          className="edit-input"
+          defaultValue={task}
+          autoFocus
+          onBlur={(e) =>
+            dispatch({
+              type: "SAVE_EDIT",
+              column: colKey,
+              index,
+              value: e.target.value,
+            })
+          }
+          onKeyDown={(e) => {
+            if (e.keyCode === 229) return;
+            if (e.key === "Enter")
+              dispatch({
+                type: "SAVE_EDIT",
+                column: colKey,
+                index,
+                value: e.target.value,
+              });
+            else if (e.key === "Escape") dispatch({ type: "CANCEL_EDIT" });
+          }}
+        />
+      ) : (
+        <span
+          className="task-text"
+          onDoubleClick={() =>
+            dispatch({ type: "START_EDIT", column: colKey, index })
+          }
+        >
+          {task}
+        </span>
+      )}
+      {!isEditing && (
+        <button
+          className="del-btn"
+          onClick={() =>
+            dispatch({ type: "REMOVE_TASK", column: colKey, index })
+          }
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+};
+
+const ColumnHeader = ({ colKey, state, dispatch }) => {
+  const { columns, limits, limitsEnabled, hiddenColumns } = state;
+  const currentTaskCount = (columns[colKey] || []).length;
+  const isEnabled = limitsEnabled[colKey];
+
+  return (
+    <div className="column-header">
+      <div className="header-top">
+        <div className="header-title-group">
+          <h3>
+            {colKey === "todo"
+              ? "To Do"
+              : colKey === "doing"
+                ? "Doing"
+                : "Completed"}
+          </h3>
+        </div>
+        <span className="count-badge">Count: {currentTaskCount}</span>
+      </div>
+
+      <div className="header-bottom">
+        <div className="limit-group">
+          <button
+            className={`limit-toggle-btn ${isEnabled ? "on" : "off"}`}
+            onClick={() => dispatch({ type: "TOGGLE_LIMIT", column: colKey })}
+          >
+            {isEnabled ? "Limit: ON" : "Limit: OFF"}
+          </button>
+          <div
+            className={`limit-input-container ${!isEnabled ? "hidden" : ""}`}
+          >
+            <span className="limit-label">MAX</span>
+            <input
+              className="limit-input-inline"
+              type="number"
+              min={currentTaskCount}
+              value={limits[colKey]}
+              onChange={(e) =>
+                dispatch({
+                  type: "UPDATE_LIMIT",
+                  column: colKey,
+                  value: e.target.value,
+                })
+              }
+              onBlur={() =>
+                dispatch({ type: "ENFORCE_LIMIT_BOUNDS", column: colKey })
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.target.blur();
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="header-actions">
+          <button
+            className="action-btn fixed-width"
+            onClick={() =>
+              dispatch({ type: "TOGGLE_VISIBILITY", column: colKey })
+            }
+          >
+            {hiddenColumns[colKey] ? "Show" : "Hide"}
+          </button>
+          {currentTaskCount > 0 && (
+            <button
+              className="action-btn danger"
+              onClick={() => dispatch({ type: "CLEAR_COLUMN", column: colKey })}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const KanbanColumn = ({ colKey, state, dispatch }) => {
   const {
     columns,
     limits,
     limitsEnabled,
     hiddenColumns,
-    boardHidden,
     dragging,
     dropTarget,
     dragOverItem,
-    editing,
   } = state;
+  const currentTaskCount = (columns[colKey] || []).length;
+  const isEnabled = limitsEnabled[colKey];
+  const limitVal = parseInt(limits[colKey], 10);
 
-  const handleDragStart = (e, col, idx) => {
-    if (editing) {
-      e.preventDefault();
-      return;
-    }
+  const isFull =
+    isEnabled && !isNaN(limitVal) && currentTaskCount >= Math.max(1, limitVal);
+  const isDraggingFromHere =
+    (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) === colKey;
 
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", `${col}:${idx}`);
-
-    GLOBAL_DRAG = { fromCol: col, fromIndex: idx };
-    dispatch({ type: "SET_DRAG_START", data: { fromColumn: col, index: idx } });
-  };
-
-  const handleDragOverColumn = (e, colKey, isFull, isSameCol) => {
-    e.preventDefault();
-
-    if (isFull && !isSameCol) {
-      e.dataTransfer.dropEffect = "none";
-      return;
-    }
-
-    e.dataTransfer.dropEffect = "move";
-
-    if (hiddenColumns[colKey]) return;
-
-    if (dropTarget !== colKey) {
-      dispatch({ type: "SET_DROP_TARGET", column: colKey });
-    }
-
-    if (
-      e.target.classList.contains("column") ||
-      e.target.classList.contains("task-list")
-    ) {
-      if (dragOverItem !== null) {
-        dispatch({ type: "SET_DRAG_OVER_ITEM", data: null });
-      }
-    }
-  };
-
-  const handleDrop = (e, toCol) => {
+  const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (hiddenColumns[toCol]) return;
+    if (hiddenColumns[colKey]) return;
 
     const fromCol = GLOBAL_DRAG?.fromCol ?? dragging?.fromColumn;
     const fromIndex = GLOBAL_DRAG?.fromIndex ?? dragging?.index;
 
     if (fromCol === undefined || fromIndex === undefined) {
       GLOBAL_DRAG = null;
-      dispatch({ type: "CLEAR_DRAG_STATE" });
-      return;
+      return dispatch({ type: "CLEAR_DRAG_STATE" });
     }
 
     const dropIndex =
-      dragOverItem?.column === toCol ? dragOverItem.index : undefined;
+      dragOverItem?.column === colKey ? dragOverItem.index : undefined;
 
-    if (fromCol === toCol) {
+    if (fromCol === colKey) {
       if (dropIndex !== undefined && dropIndex !== fromIndex) {
         dispatch({
           type: "REORDER_TASK",
-          column: toCol,
-          fromIndex: fromIndex,
+          column: colKey,
+          fromIndex,
           toIndex: dropIndex,
         });
       }
@@ -727,8 +652,8 @@ export const render = (state, dispatch) => {
       dispatch({
         type: "MOVE_TASK",
         from: fromCol,
-        to: toCol,
-        fromIndex: fromIndex,
+        to: colKey,
+        fromIndex,
         toIndex: dropIndex,
       });
     }
@@ -738,255 +663,96 @@ export const render = (state, dispatch) => {
   };
 
   return (
+    <div
+      className={`column ${dropTarget === colKey && !hiddenColumns[colKey] ? "drag-over" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (isFull && !isDraggingFromHere)
+          return (e.dataTransfer.dropEffect = "none");
+        e.dataTransfer.dropEffect = "move";
+
+        if (hiddenColumns[colKey]) return;
+        if (dropTarget !== colKey)
+          dispatch({ type: "SET_DROP_TARGET", column: colKey });
+
+        if (
+          e.target.classList.contains("column") ||
+          e.target.classList.contains("task-list")
+        ) {
+          if (dragOverItem !== null)
+            dispatch({ type: "SET_DRAG_OVER_ITEM", data: null });
+        }
+      }}
+      onDragEnter={(e) => e.preventDefault()}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          dispatch({ type: "SET_DROP_TARGET", column: null });
+        }
+      }}
+      onDrop={handleDrop}
+    >
+      <ColumnHeader colKey={colKey} state={state} dispatch={dispatch} />
+
+      {!hiddenColumns[colKey] && (
+        <div className="task-list">
+          {(columns[colKey] || []).map((task, i) => (
+            <Card
+              key={`${colKey}-${i}`}
+              task={task}
+              index={i}
+              colKey={colKey}
+              state={state}
+              dispatch={dispatch}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="add-zone">
+        <input
+          className="add-input"
+          placeholder="+ Add task..."
+          onKeyDown={(e) => {
+            if (e.keyCode === 229) return;
+            if (e.key === "Enter") {
+              const content = e.target.value.trim();
+              if (content) {
+                dispatch({ type: "ADD_TASK", column: colKey, value: content });
+                e.target.value = "";
+                setTimeout(() => e.target.focus(), 10);
+              }
+            }
+          }}
+        />
+      </div>
+    </div>
+  );
+};
+
+// 6. Component View Wrapper
+export const render = (state, dispatch) => {
+  if (!state) return null;
+
+  return (
     <>
       <button
         className="global-toggle-btn"
         onClick={() => dispatch({ type: "TOGGLE_BOARD" })}
       >
-        {boardHidden ? "Show Kanban Board" : "Hide Kanban Board"}
+        {state.boardHidden ? "Show Kanban Board" : "Hide Kanban Board"}
       </button>
 
-      {!boardHidden && (
+      {!state.boardHidden && (
         <div className="board-container">
           <div className="board">
-            {["todo", "doing", "done"].map((colKey) => {
-              const currentTaskCount = (columns[colKey] || []).length;
-              const isEnabled = limitsEnabled[colKey];
-              const limitVal = parseInt(limits[colKey], 10);
-
-              const isFull =
-                isEnabled &&
-                !isNaN(limitVal) &&
-                currentTaskCount >= Math.max(1, limitVal);
-              const isDraggingFromHere =
-                (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) === colKey;
-
-              return (
-                <div
-                  className={`column ${dropTarget === colKey && !hiddenColumns[colKey] ? "drag-over" : ""}`}
-                  key={colKey}
-                  onDragOver={(e) =>
-                    handleDragOverColumn(e, colKey, isFull, isDraggingFromHere)
-                  }
-                  onDragEnter={(e) => e.preventDefault()}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget)) {
-                      dispatch({ type: "SET_DROP_TARGET", column: null });
-                    }
-                  }}
-                  onDrop={(e) => handleDrop(e, colKey)}
-                >
-                  <div className="column-header">
-                    <div className="header-top">
-                      <div className="header-title-group">
-                        <h3>
-                          {colKey === "todo"
-                            ? "To Do"
-                            : colKey === "doing"
-                              ? "Doing"
-                              : "Completed"}
-                        </h3>
-
-                        <div
-                          className={`limit-input-container ${!isEnabled ? "hidden" : ""}`}
-                        >
-                          <span className="limit-label">MAX</span>
-                          <input
-                            className="limit-input-inline"
-                            type="number"
-                            min={currentTaskCount}
-                            value={limits[colKey]}
-                            onChange={(e) =>
-                              dispatch({
-                                type: "UPDATE_LIMIT",
-                                column: colKey,
-                                value: e.target.value,
-                              })
-                            }
-                            onBlur={() =>
-                              dispatch({
-                                type: "ENFORCE_LIMIT_BOUNDS",
-                                column: colKey,
-                              })
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.target.blur();
-                              }
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="header-bottom">
-                      <div className="limit-group">
-                        <span className="count-badge">
-                          Count: {currentTaskCount}
-                        </span>
-                        <button
-                          className={`limit-toggle-btn ${isEnabled ? "on" : "off"}`}
-                          onClick={() =>
-                            dispatch({ type: "TOGGLE_LIMIT", column: colKey })
-                          }
-                        >
-                          {isEnabled ? "Limit: ON" : "Limit: OFF"}
-                        </button>
-                      </div>
-
-                      <div className="header-actions">
-                        <button
-                          className="action-btn fixed-width"
-                          onClick={() =>
-                            dispatch({
-                              type: "TOGGLE_VISIBILITY",
-                              column: colKey,
-                            })
-                          }
-                        >
-                          {hiddenColumns[colKey] ? "Show" : "Hide"}
-                        </button>
-                        {currentTaskCount > 0 && (
-                          <button
-                            className="action-btn danger"
-                            onClick={() =>
-                              dispatch({ type: "CLEAR_COLUMN", column: colKey })
-                            }
-                          >
-                            Clear
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {!hiddenColumns[colKey] && (
-                    <div className="task-list">
-                      {(columns[colKey] || []).map((task, i) => {
-                        const isDraggingMe =
-                          (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) ===
-                            colKey &&
-                          (GLOBAL_DRAG?.fromIndex || dragging?.index) === i;
-                        const isBeingHoveredOver =
-                          dragOverItem?.column === colKey &&
-                          dragOverItem?.index === i;
-                        const isEditing =
-                          editing?.column === colKey && editing?.index === i;
-
-                        return (
-                          <div
-                            className={`card ${isDraggingMe ? "is-dragging" : ""} ${isBeingHoveredOver && !isDraggingMe ? "drag-over-indicator" : ""}`}
-                            key={`${colKey}-${i}`}
-                            draggable={!isEditing}
-                            onDragStart={(e) => handleDragStart(e, colKey, i)}
-                            onDragEnd={() => {
-                              GLOBAL_DRAG = null;
-                              dispatch({ type: "CLEAR_DRAG_STATE" });
-                            }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.dataTransfer.dropEffect = "move";
-                            }}
-                            onDragEnter={(e) => {
-                              e.preventDefault();
-                              if (
-                                dragOverItem?.column !== colKey ||
-                                dragOverItem?.index !== i
-                              ) {
-                                dispatch({
-                                  type: "SET_DRAG_OVER_ITEM",
-                                  data: { column: colKey, index: i },
-                                });
-                              }
-                            }}
-                          >
-                            {isEditing ? (
-                              <input
-                                className="edit-input"
-                                defaultValue={task}
-                                autoFocus
-                                onBlur={(e) =>
-                                  dispatch({
-                                    type: "SAVE_EDIT",
-                                    column: colKey,
-                                    index: i,
-                                    value: e.target.value,
-                                  })
-                                }
-                                onKeyDown={(e) => {
-                                  if (e.keyCode === 229) return;
-                                  if (e.key === "Enter") {
-                                    dispatch({
-                                      type: "SAVE_EDIT",
-                                      column: colKey,
-                                      index: i,
-                                      value: e.target.value,
-                                    });
-                                  } else if (e.key === "Escape") {
-                                    dispatch({ type: "CANCEL_EDIT" });
-                                  }
-                                }}
-                              />
-                            ) : (
-                              <span
-                                className="task-text"
-                                onDoubleClick={() =>
-                                  dispatch({
-                                    type: "START_EDIT",
-                                    column: colKey,
-                                    index: i,
-                                  })
-                                }
-                              >
-                                {task}
-                              </span>
-                            )}
-
-                            {!isEditing && (
-                              <button
-                                className="del-btn"
-                                onClick={() =>
-                                  dispatch({
-                                    type: "REMOVE_TASK",
-                                    column: colKey,
-                                    index: i,
-                                  })
-                                }
-                              >
-                                ×
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  <div className="add-zone">
-                    <input
-                      className="add-input"
-                      placeholder="+ Add task..."
-                      onKeyDown={(e) => {
-                        if (e.keyCode === 229) return;
-                        if (e.key === "Enter") {
-                          const content = e.target.value.trim();
-                          if (content) {
-                            dispatch({
-                              type: "ADD_TASK",
-                              column: colKey,
-                              value: content,
-                            });
-                            e.target.value = "";
-                            const inputElement = e.target;
-                            setTimeout(() => inputElement.focus(), 10);
-                          }
-                        }
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
+            {["todo", "doing", "done"].map((colKey) => (
+              <KanbanColumn
+                key={colKey}
+                colKey={colKey}
+                state={state}
+                dispatch={dispatch}
+              />
+            ))}
           </div>
         </div>
       )}
