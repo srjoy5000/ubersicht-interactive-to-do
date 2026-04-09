@@ -410,6 +410,13 @@ export const className = `
     content: ''; position: absolute; top: -7px; left: 0; right: 0; height: 2px;
     background-color: #ffffff; border-radius: 2px; z-index: 10; pointer-events: none; 
   }
+  .drop-indicator-bottom {
+    height: 2px;
+    background-color: #ffffff;
+    border-radius: 2px;
+    margin: 6px 0 10px 0; /* カードと追加エリアの間の余白を調整 */
+    pointer-events: none;
+  }
 
   .task-text { flex: 1; cursor: text; line-height: 1.4; padding-right: 10px; word-break: break-word; }
   .edit-input {
@@ -640,12 +647,16 @@ const KanbanColumn = ({ colKey, state, dispatch }) => {
       dragOverItem?.column === colKey ? dragOverItem.index : undefined;
 
     if (fromCol === colKey) {
-      if (dropIndex !== undefined && dropIndex !== fromIndex) {
+      // dropIndexがundefined（＝余白）なら、配列の最後尾（currentTaskCount）を指定する
+      const targetIndex =
+        dropIndex !== undefined ? dropIndex : currentTaskCount;
+
+      if (targetIndex !== fromIndex && targetIndex !== fromIndex + 1) {
         dispatch({
           type: "REORDER_TASK",
           column: colKey,
           fromIndex,
-          toIndex: dropIndex,
+          toIndex: targetIndex,
         });
       }
     } else {
@@ -675,12 +686,22 @@ const KanbanColumn = ({ colKey, state, dispatch }) => {
         if (dropTarget !== colKey)
           dispatch({ type: "SET_DROP_TARGET", column: colKey });
 
+        const target = e.target;
         if (
-          e.target.classList.contains("column") ||
-          e.target.classList.contains("task-list")
+          target.classList.contains("column") ||
+          target.classList.contains("task-list") ||
+          target.classList.contains("add-zone") // 追加エリア付近での反応も良くする
         ) {
-          if (dragOverItem !== null)
-            dispatch({ type: "SET_DRAG_OVER_ITEM", data: null });
+          // 現在のドラッグ目標が「この列の最後尾」でない場合のみ更新
+          if (
+            dragOverItem?.column !== colKey ||
+            dragOverItem?.index !== currentTaskCount
+          ) {
+            dispatch({
+              type: "SET_DRAG_OVER_ITEM",
+              data: { column: colKey, index: currentTaskCount },
+            });
+          }
         }
       }}
       onDragEnter={(e) => e.preventDefault()}
@@ -705,6 +726,11 @@ const KanbanColumn = ({ colKey, state, dispatch }) => {
               dispatch={dispatch}
             />
           ))}
+
+          {dragOverItem?.column === colKey &&
+            dragOverItem?.index === currentTaskCount && (
+              <div className="drop-indicator-bottom" />
+            )}
         </div>
       )}
 
