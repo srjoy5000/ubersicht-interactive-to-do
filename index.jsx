@@ -359,7 +359,7 @@ export const className = `
     border-radius: 4px;
     font-size: 11px;
     font-weight: bold;
-    color: rgba(255, 255, 255, 0.9);
+    color: rgba(255, 255, 255, 0.5);
     white-space: nowrap;
   }
 
