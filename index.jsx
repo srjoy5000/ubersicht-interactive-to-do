@@ -24,6 +24,7 @@ const loadInitialState = () => {
       ...(parsedData?.hiddenColumns || {}),
     },
     boardHidden: parsedData?.boardHidden || false,
+    activeTask: parsedData?.activeTask || null,
     dragging: null,
     dropTarget: null,
     dragOverItem: null,
@@ -59,6 +60,7 @@ const saveAndReturn = (newState) => {
       limitsEnabled: newState.limitsEnabled,
       hiddenColumns: newState.hiddenColumns,
       boardHidden: newState.boardHidden,
+      activeTask: newState.activeTask,
     }),
   );
   return newState;
@@ -183,9 +185,14 @@ export const updateState = (event, previousState) => {
         newTo.splice(toIndex, 0, task);
       else newTo.push(task);
 
+      // If moving away from 'doing' and it was the active task, remove highlight
+      const newActiveTask =
+        from === "doing" && task === state.activeTask ? null : state.activeTask;
+
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [from]: newFrom, [to]: newTo },
+        activeTask: newActiveTask,
         dragging: null,
         dropTarget: null,
         dragOverItem: null,
@@ -221,7 +228,11 @@ export const updateState = (event, previousState) => {
       });
     }
 
-    case "REMOVE_TASK":
+    case "REMOVE_TASK": {
+      const removedContent = currentColumnTasks[event.index];
+      const wasActive =
+        state.activeTask === removedContent && event.column === "doing";
+
       return saveAndReturn({
         ...state,
         columns: {
@@ -230,12 +241,15 @@ export const updateState = (event, previousState) => {
             (_, i) => i !== event.index,
           ),
         },
+        activeTask: wasActive ? null : state.activeTask,
       });
+    }
 
     case "CLEAR_COLUMN":
       return saveAndReturn({
         ...state,
         columns: { ...state.columns, [event.column]: [] },
+        activeTask: event.column === "doing" ? null : state.activeTask,
       });
 
     case "START_EDIT":
@@ -249,6 +263,10 @@ export const updateState = (event, previousState) => {
 
     case "SAVE_EDIT": {
       const content = event.value.trim();
+      const oldContent = currentColumnTasks[event.index];
+      const wasActive =
+        state.activeTask === oldContent && event.column === "doing";
+
       if (!content) {
         return saveAndReturn({
           ...state,
@@ -259,6 +277,7 @@ export const updateState = (event, previousState) => {
             ),
           },
           editing: null,
+          activeTask: wasActive ? null : state.activeTask,
         });
       }
 
@@ -268,8 +287,15 @@ export const updateState = (event, previousState) => {
         ...state,
         columns: { ...state.columns, [event.column]: updatedColumn },
         editing: null,
+        activeTask: wasActive ? content : state.activeTask,
       });
     }
+
+    case "TOGGLE_ACTIVE":
+      return saveAndReturn({
+        ...state,
+        activeTask: state.activeTask === event.task ? null : event.task,
+      });
 
     case "SET_DRAG_START":
       return { ...state, dragging: event.data };
@@ -401,7 +427,7 @@ export const className = `
   .card {
     background: rgba(255, 255, 255, 0.08); margin-bottom: 12px; padding: 14px; border-radius: 10px;
     font-size: 14px; cursor: grab; display: flex; justify-content: space-between; align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.05); transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s;
+    border: 1px solid rgba(255, 255, 255, 0.05); transition: transform 0.2s, opacity 0.2s, box-shadow 0.2s, border 0.2s;
     position: relative;
   }
   .card:hover { background: rgba(255, 255, 255, 0.12); }
@@ -410,11 +436,24 @@ export const className = `
     content: ''; position: absolute; top: -7px; left: 0; right: 0; height: 2px;
     background-color: #ffffff; border-radius: 2px; z-index: 10; pointer-events: none; 
   }
+  
+  .card.is-active {
+    background: rgba(48, 209, 88, 0.15);
+    border: 1px solid rgba(48, 209, 88, 0.4);
+    box-shadow: 0 0 12px rgba(48, 209, 88, 0.15);
+  }
+  
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
   .drop-indicator-bottom {
     height: 2px;
     background-color: #ffffff;
     border-radius: 2px;
-    margin: 6px 0 10px 0; /* カードと追加エリアの間の余白を調整 */
+    margin: 6px 0 10px 0; 
     pointer-events: none;
   }
 
@@ -425,7 +464,14 @@ export const className = `
     margin-right: 10px; font-family: inherit;
   }
 
-  .del-btn { border: none; background: none; color: rgba(255, 255, 255, 0.3); cursor: pointer; font-size: 16px; padding: 0 5px; transition: color 0.2s; }
+  .active-btn { 
+    border: none; background: none; color: rgba(255, 255, 255, 0.2); cursor: pointer; 
+    font-size: 14px; padding: 0 2px; transition: all 0.2s; 
+  }
+  .active-btn:hover { color: rgba(48, 209, 88, 0.6); }
+  .active-btn.active { color: #30d158; text-shadow: 0 0 8px rgba(48, 209, 88, 0.4); }
+
+  .del-btn { border: none; background: none; color: rgba(255, 255, 255, 0.3); cursor: pointer; font-size: 16px; padding: 0 2px; transition: color 0.2s; }
   .del-btn:hover { color: #ff453a; }
 
   .add-zone { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; }
@@ -444,17 +490,18 @@ export const className = `
 // 5. UI Components
 
 const Card = ({ task, index, colKey, state, dispatch }) => {
-  const { dragging, dragOverItem, editing } = state;
+  const { dragging, dragOverItem, editing, activeTask } = state;
   const isDraggingMe =
     (GLOBAL_DRAG?.fromCol || dragging?.fromColumn) === colKey &&
     (GLOBAL_DRAG?.fromIndex || dragging?.index) === index;
   const isBeingHoveredOver =
     dragOverItem?.column === colKey && dragOverItem?.index === index;
   const isEditing = editing?.column === colKey && editing?.index === index;
+  const isActive = colKey === "doing" && activeTask === task;
 
   return (
     <div
-      className={`card ${isDraggingMe ? "is-dragging" : ""} ${isBeingHoveredOver && !isDraggingMe ? "drag-over-indicator" : ""}`}
+      className={`card ${isDraggingMe ? "is-dragging" : ""} ${isBeingHoveredOver && !isDraggingMe ? "drag-over-indicator" : ""} ${isActive ? "is-active" : ""}`}
       draggable={!isEditing}
       onDragStart={(e) => {
         if (isEditing) return e.preventDefault();
@@ -520,14 +567,29 @@ const Card = ({ task, index, colKey, state, dispatch }) => {
         </span>
       )}
       {!isEditing && (
-        <button
-          className="del-btn"
-          onClick={() =>
-            dispatch({ type: "REMOVE_TASK", column: colKey, index })
-          }
-        >
-          ×
-        </button>
+        <div className="card-actions">
+          {colKey === "doing" && (
+            <button
+              className={`active-btn ${isActive ? "active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                dispatch({ type: "TOGGLE_ACTIVE", task });
+              }}
+              title="Set as Current Task"
+            >
+              ●
+            </button>
+          )}
+          <button
+            className="del-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              dispatch({ type: "REMOVE_TASK", column: colKey, index });
+            }}
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );
@@ -647,7 +709,6 @@ const KanbanColumn = ({ colKey, state, dispatch }) => {
       dragOverItem?.column === colKey ? dragOverItem.index : undefined;
 
     if (fromCol === colKey) {
-      // dropIndexがundefined（＝余白）なら、配列の最後尾（currentTaskCount）を指定する
       const targetIndex =
         dropIndex !== undefined ? dropIndex : currentTaskCount;
 
@@ -690,9 +751,8 @@ const KanbanColumn = ({ colKey, state, dispatch }) => {
         if (
           target.classList.contains("column") ||
           target.classList.contains("task-list") ||
-          target.classList.contains("add-zone") // 追加エリア付近での反応も良くする
+          target.classList.contains("add-zone")
         ) {
-          // 現在のドラッグ目標が「この列の最後尾」でない場合のみ更新
           if (
             dragOverItem?.column !== colKey ||
             dragOverItem?.index !== currentTaskCount
