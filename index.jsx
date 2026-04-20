@@ -328,10 +328,11 @@ export const className = `
 
   .global-toggle-btn {
     background: rgba(20, 20, 20, 0.5);
+    background: rgba(255, 255, 255, 0);
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
-    border: 1px solid rgba(255, 255, 255, 0.15);
-    color: white;
+    border: 1px solid rgba(255, 255, 255, 0);
+    color: rgba(255, 255, 255, 0);
     padding: 8px 20px;
     border-radius: 20px;
     font-size: 11px;
@@ -341,12 +342,15 @@ export const className = `
     cursor: pointer;
     margin-bottom: 20px;
     transition: all 0.2s ease;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0);
   }
   .global-toggle-btn:hover {
     background: rgba(255, 255, 255, 0.1);
+    background: rgba(20, 20, 20, 0.5);
+    background: rgba(255, 255, 255, 0.1);
     transform: translateY(-2px);
     border-color: rgba(255, 255, 255, 0.3);
+    color: white;
   }
   .board-container { width: 100%; display: flex; justify-content: center; }
   .board { display: flex; gap: 20px; width: 100%; }
