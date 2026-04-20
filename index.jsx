@@ -347,7 +347,6 @@ export const className = `
   .global-toggle-btn:hover {
     background: rgba(255, 255, 255, 0.1);
     background: rgba(20, 20, 20, 0.5);
-    background: rgba(255, 255, 255, 0.1);
     transform: translateY(-2px);
     border-color: rgba(255, 255, 255, 0.3);
     color: white;
