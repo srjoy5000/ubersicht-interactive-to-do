@@ -1,6 +1,6 @@
 # Übersicht Modern Kanban
 
-> A fully interactive Kanban board widget for Übersicht — manage tasks directly on your desktop with drag-and-drop, WIP limits, and persistent state.
+> A fully interactive Kanban board widget for Übersicht — manage tasks directly on your macOS desktop with drag-and-drop, WIP limits, and persistent state.
 
 <!-- ![License](https://img.shields.io/github/license/srjoy5000/interactive-kanban-app?style=for-the-badge) -->
 <!-- ![Issues](https://img.shields.io/github/issues/srjoy5000/interactive-kanban-app?style=for-the-badge) -->
@@ -67,8 +67,8 @@ interactive-kanban-app/
 1. **Clone the repo into Übersicht's widgets directory:**
 
    ```bash
-   git clone https://github.com/srjoy5000/interactive-kanban-app.git \
-     ~/Library/Application\ Support/Übersicht/widgets/interactive-kanban-app
+   git clone git@github.com:srjoy5000/ubersicht-interactive-to-do.git \
+     ~/Library/Application\ Support/Übersicht/widgets/ubersicht-interactive-to-do.git
    ```
 
 2. **Reload Übersicht widgets** — press `⌘R` in the Übersicht menu bar, or go to **Übersicht → Reload All Widgets**.
