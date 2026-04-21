@@ -1,4 +1,4 @@
-# Übersicht Interactive Kanban
+# Übersicht Modern Kanban
 
 > A fully interactive Kanban board widget for Übersicht — manage tasks directly on your desktop with drag-and-drop, WIP limits, and persistent state.
 
