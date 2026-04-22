@@ -9,7 +9,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/srjoy5000/ubersicht-interactive-to-do?style=social)](https://github.com/srjoy5000/ubersicht-interactive-to-do/stargazers)
 
-![Kanban Board](images/kanban-board.png)
+![Kanban Board](images/kanban-board.webp)
 
 ---
 
